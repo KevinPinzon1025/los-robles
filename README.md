@@ -4,7 +4,7 @@ Sistema de reservas de canchas y alquiler de implementos deportivos. El Sprint 0
 
 ## Requisitos
 
-- Node.js 22 y npm.
+- Node.js `^22.22.2`, `^24.15.0` o `>=26` (lo exigen jsdom, Testcontainers y lint-staged), y npm. `.nvmrc` apunta a Node 22 y las imágenes Docker usan `node:22-alpine`.
 - Docker Desktop con Docker Compose v2. Docker Engine con Compose v2 también funciona en Linux.
 
 ## Inicio rápido
@@ -61,6 +61,10 @@ Los comandos de desarrollo y de base de datos leen el `.env` de la raíz. El nav
 | `npm run db:make -w @losrobles/api -- nombre`    | Crea una migración TypeScript para la API.                                                                         |
 
 Los hooks ejecutan lint-staged antes del commit y validan los mensajes con Conventional Commits.
+
+### Actualizar dependencias (`package-lock.json`)
+
+Después de agregar o actualizar dependencias, regenera el lockfile con **`npm run lock`** (requiere Docker). El script lo genera dentro de `node:22-alpine`. Si se regenera con npm en Windows, se pierden dependencias opcionales de Linux (`@emnapi/*` de rolldown) y `npm ci` falla en Docker y en CI con el error `Missing: @emnapi/core ... from lock file`. Luego ejecuta `npm install` para actualizar tu `node_modules` local.
 
 ## Estructura
 
