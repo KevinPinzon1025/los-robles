@@ -1,0 +1,33 @@
+name: Historia de usuario
+description: Nueva historia para el Product Backlog
+title: "HU-XX: "
+labels: ["tipo:historia"]
+body:
+  - type: textarea
+    id: historia
+    attributes:
+      label: Historia
+      description: Como <rol> quiero <acción> para <beneficio>
+    validations:
+      required: true
+  - type: textarea
+    id: criterios
+    attributes:
+      label: Criterios de aceptación
+      description: "Formato Dado / Cuando / Entonces, uno por línea con casilla"
+      value: |
+        - [ ] Dado ... cuando ... entonces ...
+    validations:
+      required: true
+  - type: textarea
+    id: notas
+    attributes:
+      label: Notas técnicas
+      description: Módulos, endpoints, eventos o tablas involucradas
+  - type: dropdown
+    id: puntos
+    attributes:
+      label: Puntos
+      options: ["1", "2", "3", "5", "8"]
+    validations:
+      required: true
