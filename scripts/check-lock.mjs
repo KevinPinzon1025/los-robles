@@ -21,8 +21,11 @@ function fail(lines) {
 }
 
 // Manifiestos que npm necesita para validar el lockfile: raíz + workspaces.
+// -z: rutas literales separadas por NUL. Sin -z, git entrecomilla y escapa las rutas
+// con caracteres no ASCII (p. ej. "apps/notificaci\303\263n/...") y `git show` falla.
 const manifests = git(
   'ls-files',
+  '-z',
   '--cached',
   '--',
   'package.json',
@@ -30,7 +33,7 @@ const manifests = git(
   'apps/*/package.json',
   'packages/*/package.json',
 )
-  .split('\n')
+  .split('\0')
   .filter(Boolean);
 
 if (!manifests.includes('package-lock.json')) {
