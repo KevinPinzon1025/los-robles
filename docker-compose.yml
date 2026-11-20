@@ -1,0 +1,121 @@
+name: losrobles
+
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      CORE_DB_USER: ${CORE_DB_USER}
+      CORE_DB_PASSWORD: ${CORE_DB_PASSWORD}
+      NOTIF_DB_USER: ${NOTIF_DB_USER}
+      NOTIF_DB_PASSWORD: ${NOTIF_DB_PASSWORD}
+    ports: ['127.0.0.1:5432:5432']
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./infra/postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -h 127.0.0.1 -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"']
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    networks: [losrobles-net]
+
+  rabbitmq:
+    image: rabbitmq:4-management-alpine
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS}
+    ports: ['127.0.0.1:5672:5672', '127.0.0.1:15672:15672']
+    volumes:
+      - rabbitdata:/var/lib/rabbitmq
+    healthcheck:
+      test: ['CMD', 'rabbitmq-diagnostics', '-q', 'ping']
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    networks: [losrobles-net]
+
+  mailpit:
+    image: axllent/mailpit:v1.34.0
+    ports: ['127.0.0.1:1025:1025', '127.0.0.1:8025:8025']
+    networks: [losrobles-net]
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    environment:
+      API_PORT: '4000'
+      DATABASE_URL: ${DATABASE_URL}
+      RABBITMQ_URL: ${RABBITMQ_URL}
+      CORS_ORIGINS: ${CORS_ORIGINS}
+      LOG_LEVEL: ${LOG_LEVEL}
+      ENABLE_DOCS: ${ENABLE_DOCS}
+      SEED_ON_START: ${SEED_ON_START}
+      SEED_DEFAULT_PASSWORD: ${SEED_DEFAULT_PASSWORD}
+    ports: ['127.0.0.1:${API_PORT:-4000}:4000']
+    depends_on:
+      db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1:4000/api/v1/health']
+      interval: 5s
+      timeout: 8s
+      retries: 12
+    restart: unless-stopped
+    networks: [losrobles-net]
+
+  notificaciones:
+    build:
+      context: .
+      dockerfile: apps/notificaciones/Dockerfile
+    environment:
+      NOTIF_DATABASE_URL: ${NOTIF_DATABASE_URL}
+      RABBITMQ_URL: ${RABBITMQ_URL}
+      SMTP_HOST: ${SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT}
+      MAIL_FROM: ${MAIL_FROM}
+      LOG_LEVEL: ${LOG_LEVEL}
+      PREFETCH: ${PREFETCH}
+    depends_on:
+      db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      mailpit:
+        condition: service_started
+    restart: unless-stopped
+    networks: [losrobles-net]
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        VITE_API_BASE: ${VITE_API_BASE:-/api/v1}
+    ports: ['127.0.0.1:5173:80']
+    depends_on:
+      api:
+        condition: service_started
+    networks: [losrobles-net]
+
+  pgadmin:
+    image: dpage/pgadmin4:9.19
+    profiles: [tools]
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD}
+    ports: ['127.0.0.1:5050:80']
+    networks: [losrobles-net]
+
+networks:
+  losrobles-net:
+    name: losrobles-net
+
+volumes:
+  pgdata:
+  rabbitdata:

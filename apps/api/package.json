@@ -1,0 +1,43 @@
+{
+  "name": "@losrobles/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch --env-file-if-exists=../../.env src/main.ts",
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node dist/main.js",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "db:migrate": "tsx --env-file-if-exists=../../.env src/db/cli.ts migrate",
+    "db:rollback": "tsx --env-file-if-exists=../../.env src/db/cli.ts rollback",
+    "db:seed": "tsx --env-file-if-exists=../../.env src/db/cli.ts seed",
+    "db:make": "tsx --env-file-if-exists=../../.env src/db/cli.ts make"
+  },
+  "dependencies": {
+    "@losrobles/shared": "0.1.0",
+    "amqplib": "^2.4.0",
+    "bcrypt": "^6.0.0",
+    "cors": "^2.8.6",
+    "express": "^5.3.0",
+    "helmet": "^8.3.0",
+    "knex": "^3.3.0",
+    "pg": "^8.23.1",
+    "pino": "^10.4.0",
+    "pino-http": "^11.0.0",
+    "swagger-ui-express": "^5.0.1",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@testcontainers/postgresql": "^12.2.2",
+    "@types/amqplib": "^0.10.8",
+    "@types/bcrypt": "^6.0.0",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/supertest": "^7.2.1",
+    "@types/swagger-ui-express": "^4.1.8",
+    "pino-pretty": "^13.2.0",
+    "supertest": "^7.3.2",
+    "testcontainers": "^12.2.2"
+  }
+}

@@ -113,7 +113,7 @@ flowchart LR
   Infra --> DB[(PostgreSQL<br/>esquema core)]
   Relay -- lee outbox --> DB
   Relay -- publica eventos --> MQ{{RabbitMQ<br/>exchange losrobles.events}}
-  MQ -- cola notificaciones.reservas --> Cons
+  MQ -- cola notificaciones.eventos --> Cons
   Cons --> NDB[(PostgreSQL<br/>esquema notificaciones)]
   Mailer --> SMTP[Servidor SMTP / Mailpit]
 ```
@@ -131,6 +131,8 @@ flowchart LR
 | `alquiler.vencido.v1` | alquileres (job) | idAlquiler, implemento, destinatario | notificaciones |
 
 Sobre de todos los mensajes: `{ id (uuid), tipo, version, ocurridoEn, correlationId, datos }`.
+
+La API y el worker declaran el exchange `losrobles.events` (topic, durable) al conectarse. El worker declara la cola quorum `notificaciones.eventos`, con bindings `usuario.#`, `reserva.#` y `alquiler.#`. También declara `notificaciones.eventos.retry` (TTL de 10 s y retorno a la cola principal) y `notificaciones.eventos.dlq`. Los mensajes inválidos llegan directamente a la DLQ. Los fallos de procesamiento admiten hasta tres reintentos.
 
 ---
 
@@ -218,8 +220,7 @@ los-robles/
 │  └─ shared/                        # esquemas Zod, DTOs, enums y contratos de eventos (events/)
 ├─ docs/                             # este documento, SCRUM, ADRs, diagramas C4
 ├─ infra/
-│  ├─ postgres/init.sql              # crea esquemas core y notificaciones + usuarios por servicio
-│  └─ rabbitmq/definitions.json      # exchange, colas, DLQ y bindings
+│  └─ postgres/init/01-esquemas.sh   # crea esquemas, roles por servicio y btree_gist
 ├─ .github/workflows/ci.yml
 ├─ docker-compose.yml                # entorno completo de desarrollo (ver sección 9)
 ├─ .env.example
@@ -354,7 +355,7 @@ Formato de error único: `{ "error": { "code": "CANCHA_NO_ACTIVA", "message": ".
 | **Domain Events + Publish/Subscribe** | Comportamiento / Integración | Núcleo publica, `apps/notificaciones` se suscribe vía RabbitMQ (exchange `topic`) | `reserva.creada` / `reserva.cancelada` disparan correos sin que el caso de uso sepa que existen las notificaciones (Observer distribuido) |
 | **Transactional Outbox** | Integración | `core.outbox` + `OutboxRelay` | El evento se guarda **en la misma transacción** que la reserva; un relay lo publica después. Nunca queda una reserva sin su evento ni un evento de una reserva que hizo rollback |
 | **Idempotent Consumer** | Integración | `mensaje_procesado` en notificaciones | RabbitMQ entrega "al menos una vez"; si un mensaje llega dos veces, el correo no se envía dos veces |
-| **Retry + Dead Letter Queue** | Resiliencia | Colas `*.retry` y `*.dlq` | Si el SMTP falla, se reintenta con espera creciente (3 veces) y luego el mensaje va a la DLQ para revisarlo |
+| **Retry + Dead Letter Queue** | Resiliencia | Colas `*.retry` y `*.dlq` | Un fallo admite hasta tres reintentos con 10 s de espera antes de pasar a la DLQ |
 | **Adapter** | Estructural | `PgReservaRepository`, `RabbitMqPublisher`, `SmtpMailer`, `JwtTokenService` | Envuelven librerías externas detrás de los puertos |
 | **Template Method / Factory** | Comportamiento / Creacional | `PlantillaFactory` en notificaciones | Cada tipo de evento tiene su plantilla de correo con la misma estructura base |
 | **DTO + Mapper** | Estructural | `*Mapper.ts` + `packages/shared` | Separa fila de BD, entidad de dominio y respuesta HTTP (adiós `r.id ?? r.ID ?? ...`) |
@@ -390,7 +391,7 @@ sequenceDiagram
   UC-->>C: 201 ReservaDTO
   Note over OB,N: Asíncrono: el cliente ya recibió su respuesta
   OB->>MQ: publicar reserva.creada.v1
-  MQ->>N: entregar a cola notificaciones.reservas
+  MQ->>N: entregar a cola notificaciones.eventos
   N->>N: ¿ya procesado? → enviar correo → ack
 ```
 
@@ -415,7 +416,7 @@ sequenceDiagram
 | Servicio | Imagen | Puerto local | Función |
 |---|---|---|---|
 | `db` | `postgres:17-alpine` | 5432 | BD con esquemas `core` y `notificaciones` (volumen `pgdata`) |
-| `rabbitmq` | `rabbitmq:4-management-alpine` | 5672 / 15672 (panel) | Broker de mensajes; carga `infra/rabbitmq/definitions.json` |
+| `rabbitmq` | `rabbitmq:4-management-alpine` | 5672 / 15672 (panel) | Broker de mensajes con topología declarada por la API y el worker |
 | `api` | build `apps/api` | 4000 | Núcleo + Outbox Relay; corre migraciones al iniciar |
 | `notificaciones` | build `apps/notificaciones` | — (sin HTTP público) | Worker consumidor de eventos |
 | `web` | build `apps/web` (nginx) | 5173 / 80 | Frontend |
