@@ -1,36 +1,88 @@
 # Centro Deportivo Los Robles
 
-Sistema de reservas de canchas y alquiler de implementos deportivos del Centro Deportivo Los Robles.
+Sistema de reservas de canchas y alquiler de implementos deportivos. El Sprint 0 establece el entorno de desarrollo, el esquema de datos, una API de estado, una pantalla de inicio y el consumidor de eventos.
 
-> Estado: **Sprint 0 — fundaciones**. Por ahora el repositorio contiene la documentación de diseño; el código se construye sprint a sprint.
+## Requisitos
 
-## Arquitectura en una línea
-Monolito modular hexagonal (**API núcleo**) + **servicio de notificaciones** desacoplado por eventos con **RabbitMQ**, sobre **PostgreSQL 17**, frontend **React**, todo levantado con **Docker Compose**.
+- Node.js `^22.22.2`, `^24.15.0` o `>=26` (lo exigen jsdom, Testcontainers y lint-staged), y npm. `.nvmrc` apunta a Node 22 y las imágenes Docker usan `node:22-alpine`.
+- Docker Desktop con Docker Compose v2. Docker Engine con Compose v2 también funciona en Linux.
 
-```mermaid
-flowchart LR
-  U((Cliente / Admin)) --> W[Web React]
-  W -- REST + JWT --> A[API núcleo]
-  A --> DB[(PostgreSQL)]
-  A -- eventos (outbox) --> MQ{{RabbitMQ}}
-  MQ --> N[Notificaciones]
-  N --> M[SMTP]
+## Inicio rápido
+
+Copia los valores de desarrollo y levanta el entorno. En PowerShell puedes usar `Copy-Item .env.example .env`.
+
+```sh
+cp .env.example .env
+docker compose up -d --build
+docker compose ps
 ```
 
-## Documentación
-| Documento | Contenido |
-|---|---|
-| [docs/ARQUITECTURA.md](docs/ARQUITECTURA.md) | Alcance, reglas de negocio, stack, estructura del monorepo, modelo de datos, API, patrones de diseño, Docker, seguridad, ADRs |
-| [docs/C4.md](docs/C4.md) | Diagramas C4: contexto, contenedores, componentes, código, despliegue y dinámico |
-| [docs/SCRUM.md](docs/SCRUM.md) | Roles, ceremonias, DoR/DoD, flujo Git, product backlog (149 pts) y plan de sprints |
+| Servicio          | URL                                   |
+| ----------------- | ------------------------------------- |
+| Web               | <http://localhost:5173>               |
+| API, estado       | <http://localhost:4000/api/v1/health> |
+| Swagger           | <http://localhost:4000/api/docs>      |
+| RabbitMQ, panel   | <http://localhost:15672>              |
+| Mailpit, bandeja  | <http://localhost:8025>               |
+| pgAdmin, opcional | <http://localhost:5050>               |
 
-## Stack
-React 19 · Vite · Tailwind · TanStack Query · Node 22 · Express 5 · TypeScript · Knex · PostgreSQL 17 · RabbitMQ 4 · Docker Compose · Vitest · Playwright · GitHub Actions
+Inicia pgAdmin con `docker compose --profile tools up -d pgadmin`. Usa `db` como host en pgAdmin y las credenciales de `.env`. La API y el worker ejecutan sus migraciones al iniciar. Con `SEED_ON_START=true`, la API también carga los datos de ejemplo.
 
-## Flujo de trabajo
-- Ramas: `main` (estable) · `develop` (integración) · `feature/HU-XX-descripcion`.
-- Commits: [Conventional Commits](https://www.conventionalcommits.org/es/).
-- Cada historia de usuario es un issue; el tablero está en GitHub Projects.
+### Usuarios semilla
 
-## Cómo levantarlo
-_Disponible al terminar el Sprint 0 (`docker compose up`)._
+| Rol           | Correo                    |
+| ------------- | ------------------------- |
+| Administrador | `admin@losrobles.test`    |
+| Cliente       | `cliente1@losrobles.test` |
+| Cliente       | `cliente2@losrobles.test` |
+
+Los tres usan inicialmente el valor local de `SEED_DEFAULT_PASSWORD`. Se guardan hashes bcrypt con coste 12. Volver a ejecutar el seed conserva el hash existente. El inicio de sesión llegará en el Sprint 1.
+
+## Ejecutar las apps directamente con Node.js
+
+1. Copia `.env.example` a `.env`. En `DATABASE_URL` y `NOTIF_DATABASE_URL`, cambia el host `db` por `localhost`. Cambia también `rabbitmq` por `localhost` en `RABBITMQ_URL` y fija `SMTP_HOST=localhost`.
+2. Arranca únicamente las dependencias con `docker compose up -d db rabbitmq mailpit`. Si ya tienes PostgreSQL, RabbitMQ y SMTP configurados fuera de Docker, apunta las variables a esas instancias. PostgreSQL debe tener los dos roles y esquemas separados, y la extensión `btree_gist`, según `infra/postgres/init/01-esquemas.sh`.
+3. Ejecuta `npm ci` y luego `npm run dev`. Usa siempre `npm ci` para instalar: no modifica `package-lock.json` (ver [Actualizar dependencias](#actualizar-dependencias-package-lockjson)). Vite escucha en el puerto 5173 y envía las rutas que empiezan por `/api` a la API local en el puerto 4000.
+
+Los comandos de desarrollo y de base de datos leen el `.env` de la raíz. El navegador solo recibe las variables de Vite con prefijo `VITE_`.
+
+## Scripts
+
+| Comando                                          | Función                                                                                                            |
+| ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------ |
+| `npm run dev`                                    | Arranca la API, el worker y Vite en modo watch, junto con los contratos compartidos.                               |
+| `npm run format` / `npm run format:check`        | Aplica o verifica el formato con Prettier.                                                                         |
+| `npm run lint`                                   | Ejecuta ESLint.                                                                                                    |
+| `npm run typecheck`                              | Verifica los tipos de todos los workspaces.                                                                        |
+| `npm test`                                       | Ejecuta Vitest. La integración PostgreSQL se omite localmente si Docker no está disponible. En CI debe ejecutarse. |
+| `npm run build`                                  | Compila los contratos compartidos, la API, el worker y el frontend.                                                |
+| `npm run db:migrate` / `npm run db:seed`         | Aplica las migraciones de la API o carga datos de ejemplo.                                                         |
+| `npm run db:rollback -w @losrobles/api -- --all` | Revierte todas las migraciones del esquema `core`. Omite `--all` para revertir el último lote.                     |
+| `npm run db:make -w @losrobles/api -- nombre`    | Crea una migración TypeScript para la API.                                                                         |
+
+Los hooks ejecutan lint-staged antes del commit y validan los mensajes con Conventional Commits.
+
+### Actualizar dependencias (`package-lock.json`)
+
+`package-lock.json` siempre se genera en Linux. Si npm lo regenera en Windows (`npm install`, `npm update`, `npm install <paquete>`), se pierden dependencias opcionales de Linux (`@emnapi/*` de rolldown) y `npm ci` falla en Docker y en CI con `Missing: @emnapi/core ... from lock file`.
+
+Para agregar o actualizar una dependencia:
+
+1. Edita la versión en el `package.json` del workspace, o ejecuta `npm install <paquete> -w <workspace>`. Este comando también reescribe el lockfile, que se corrige en el paso 2.
+2. Ejecuta **`npm run lock`** (requiere Docker). Regenera `package-lock.json` dentro de `node:22-alpine`.
+3. Ejecuta **`npm ci`** para sincronizar tu `node_modules` local. Nunca uses `npm install` sin argumentos para esto, porque volvería a reescribir el lockfile.
+
+El hook de pre-commit ejecuta `scripts/check-lock.mjs` cuando cambian `package.json` o `package-lock.json`, y bloquea el commit si `npm ci` no puede usar el lockfile.
+
+## Estructura
+
+| Carpeta               | Contenido                                                         |
+| --------------------- | ----------------------------------------------------------------- |
+| `apps/api`            | Express, salud, OpenAPI y migraciones y seeds del esquema `core`. |
+| `apps/web`            | React, Vite, Tailwind y configuración de nginx.                   |
+| `apps/notificaciones` | Consumidor RabbitMQ, adaptador SMTP y migraciones propias.        |
+| `packages/shared`     | Esquemas Zod, enumeraciones y contratos HTTP y de eventos.        |
+| `infra/postgres/init` | Roles, esquemas y extensión de PostgreSQL.                        |
+| `.github/workflows`   | Verificaciones de calidad y compilación de imágenes.              |
+
+Consulta el [diseño del Sprint 0](docs/sprints/sprint-0-diseno.md), la [arquitectura](docs/ARQUITECTURA.md), los [diagramas C4](docs/C4.md) y el [plan de trabajo](docs/SCRUM.md).
