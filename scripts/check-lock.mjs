@@ -61,11 +61,16 @@ try {
       .filter((line) => line.includes('npm error') && line.trim() !== 'npm error')
       .slice(0, 6)
       .join('\n');
-    fail([
-      'El package-lock.json preparado para el commit no sirve para `npm ci`.',
-      detail || result.error?.message || '',
-      'Regenéralo con `npm run lock` (Linux, vía Docker), agrégalo con `git add package-lock.json` y vuelve a intentar.',
-    ]);
+    // exitCode (no process.exit) para que el finally borre la carpeta temporal.
+    process.stderr.write(
+      [
+        'El package-lock.json preparado para el commit no sirve para `npm ci`.',
+        detail || result.error?.message || '',
+        'Regenéralo con `npm run lock` (Linux, vía Docker), agrégalo con `git add package-lock.json` y vuelve a intentar.',
+        '',
+      ].join('\n'),
+    );
+    process.exitCode = 1;
   }
 } finally {
   rmSync(workdir, { recursive: true, force: true });
