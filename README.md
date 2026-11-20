@@ -42,7 +42,7 @@ Los tres usan inicialmente el valor local de `SEED_DEFAULT_PASSWORD`. Se guardan
 
 1. Copia `.env.example` a `.env`. En `DATABASE_URL` y `NOTIF_DATABASE_URL`, cambia el host `db` por `localhost`. Cambia también `rabbitmq` por `localhost` en `RABBITMQ_URL` y fija `SMTP_HOST=localhost`.
 2. Arranca únicamente las dependencias con `docker compose up -d db rabbitmq mailpit`. Si ya tienes PostgreSQL, RabbitMQ y SMTP configurados fuera de Docker, apunta las variables a esas instancias. PostgreSQL debe tener los dos roles y esquemas separados, y la extensión `btree_gist`, según `infra/postgres/init/01-esquemas.sh`.
-3. Ejecuta `npm install` y luego `npm run dev`. Vite escucha en el puerto 5173 y envía las rutas que empiezan por `/api` a la API local en el puerto 4000.
+3. Ejecuta `npm ci` y luego `npm run dev`. Usa siempre `npm ci` para instalar: no modifica `package-lock.json` (ver [Actualizar dependencias](#actualizar-dependencias-package-lockjson)). Vite escucha en el puerto 5173 y envía las rutas que empiezan por `/api` a la API local en el puerto 4000.
 
 Los comandos de desarrollo y de base de datos leen el `.env` de la raíz. El navegador solo recibe las variables de Vite con prefijo `VITE_`.
 
@@ -64,7 +64,15 @@ Los hooks ejecutan lint-staged antes del commit y validan los mensajes con Conve
 
 ### Actualizar dependencias (`package-lock.json`)
 
-Después de agregar o actualizar dependencias, regenera el lockfile con **`npm run lock`** (requiere Docker). El script lo genera dentro de `node:22-alpine`. Si se regenera con npm en Windows, se pierden dependencias opcionales de Linux (`@emnapi/*` de rolldown) y `npm ci` falla en Docker y en CI con el error `Missing: @emnapi/core ... from lock file`. Luego ejecuta `npm install` para actualizar tu `node_modules` local.
+`package-lock.json` siempre se genera en Linux. Si npm lo regenera en Windows (`npm install`, `npm update`, `npm install <paquete>`), se pierden dependencias opcionales de Linux (`@emnapi/*` de rolldown) y `npm ci` falla en Docker y en CI con `Missing: @emnapi/core ... from lock file`.
+
+Para agregar o actualizar una dependencia:
+
+1. Edita la versión en el `package.json` del workspace, o ejecuta `npm install <paquete> -w <workspace>`. Este comando también reescribe el lockfile, que se corrige en el paso 2.
+2. Ejecuta **`npm run lock`** (requiere Docker). Regenera `package-lock.json` dentro de `node:22-alpine`.
+3. Ejecuta **`npm ci`** para sincronizar tu `node_modules` local. Nunca uses `npm install` sin argumentos para esto, porque volvería a reescribir el lockfile.
+
+El hook de pre-commit ejecuta `scripts/check-lock.mjs` cuando cambian `package.json` o `package-lock.json`, y bloquea el commit si `npm ci` no puede usar el lockfile.
 
 ## Estructura
 
